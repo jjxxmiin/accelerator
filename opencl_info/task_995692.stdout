@@ -1,0 +1,42 @@
+Number of platforms: 1
+
+platform: 0
+- platform name : AMD Accelerated Parallel Processing
+- platform vender : Advanced Micro Devices, Inc.
+Number of devices : 5
+
+device: 0
+- device type :GPU
+- device name : Tahiti
+- device max group size : 256
+- device global mem size : 3061016896
+- device local mem size : 32768
+- device max alloc size : 1061298816
+device: 1
+- device type :GPU
+- device name : Tahiti
+- device max group size : 256
+- device global mem size : 3152639936
+- device local mem size : 32768
+- device max alloc size : 2196013056
+device: 2
+- device type :GPU
+- device name : Tahiti
+- device max group size : 256
+- device global mem size : 3152639936
+- device local mem size : 32768
+- device max alloc size : 2196013056
+device: 3
+- device type :GPU
+- device name : Tahiti
+- device max group size : 256
+- device global mem size : 3152639936
+- device local mem size : 32768
+- device max alloc size : 2196013056
+device: 4
+- device type :CPU
+- device name : Intel(R) Xeon(R) CPU E5-2650 0 @ 2.00GHz
+- device max group size : 1024
+- device global mem size : 134992531456
+- device local mem size : 32768
+- device max alloc size : 33748132864
