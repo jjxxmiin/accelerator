@@ -2,6 +2,7 @@
 
 ## dependency
 - opencl
+- 천둥(gtx1080)
 
 ## 절차
 - 벡터 합
@@ -9,3 +10,5 @@
 
 ## 프로젝트
 - kmeans 알고리즘 가속화
+
+## time
