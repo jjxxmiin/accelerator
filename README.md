@@ -12,3 +12,18 @@
 - kmeans 알고리즘 가속화
 
 ## time
+
+![time](https://github.com/jjeamin/accelerator/blob/master/kmeans/time.JPG)
+
+## 결과
+- input1
+
+![input1](https://github.com/jjeamin/accelerator/blob/master/kmeans/1.png)
+
+- input2
+
+![input2](https://github.com/jjeamin/accelerator/blob/master/kmeans/2.png)
+
+- input3
+
+![input3](https://github.com/jjeamin/accelerator/blob/master/kmeans/3.png)
