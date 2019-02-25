@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <float.h>
 /*
  * TODO
  * Define global variables here. For example,
@@ -18,12 +19,14 @@
 cl_platform_id platform;
 cl_device_id device;
 cl_context context;
-cl_command_queue queue;
+//cl_command_queue queue;
+cl_command_queue queue[2];
 cl_program program;
 char *kernel_source;
 size_t kernel_source_size;
 cl_kernel kernel;
 cl_int err;
+cl_event kernel_event[2];
 
 double get_time() {
 	struct timeval tv;
@@ -37,7 +40,7 @@ char *get_source_code(const char *file_name,size_t *len){
 	FILE *file = fopen(file_name,"r");
 	if(file == NULL){
 		printf("[%s,%d] OpenCL error %s\n",__FILE__,__LINE__,file_name);
-                exit(EXIT_FAILURE); 
+		exit(EXIT_FAILURE); 
 	}
 	fseek(file,0,SEEK_END);
 	length = (size_t)ftell(file);
@@ -54,11 +57,6 @@ char *get_source_code(const char *file_name,size_t *len){
 }
 
 void kmeans_init() {
-	/*
-	 * TODO
-	 * Initialize OpenCL objects as global variables. For example,
-	 * clGetPlatformIDs(1, &platform, NULL);
-	 */
 	err = clGetPlatformIDs(1,&platform,NULL);
 	CHECK_ERROR(err);
 
@@ -68,8 +66,10 @@ void kmeans_init() {
 	context = clCreateContext(NULL,1,&device,NULL,NULL,&err);
 	CHECK_ERROR(err);
 
-	queue = clCreateCommandQueue(context,device,0,&err);
+	queue[0] = clCreateCommandQueue(context,device,0,&err);
 	CHECK_ERROR(err);
+	queue[1] = clCreateCommandQueue(context,device,0,&err);
+	CHECK_ERROR(err);	
 
 	kernel_source = get_source_code("kernel.cl", &kernel_source_size);
 	program = clCreateProgramWithSource(context,1,(const char**)&kernel_source,&kernel_source_size,&err);
@@ -82,9 +82,9 @@ void kmeans_init() {
 
 		err = clGetProgramBuildInfo(program,device,CL_PROGRAM_BUILD_LOG,0,NULL,&log_size);
 		CHECK_ERROR(err);
-	
+
 		log = (char*)malloc(log_size+1);
-		err = clGetProgramBuildInfo(program,device,CL_PROGRAM_BUILD_LOG,0,NULL,&log_size);
+		err = clGetProgramBuildInfo(program,device,CL_PROGRAM_BUILD_LOG, log_size, log,NULL);
 		CHECK_ERROR(err);
 
 		log[log_size] = '\0';
@@ -92,83 +92,93 @@ void kmeans_init() {
 		free(log);
 	}
 	CHECK_ERROR(err);
-	
-	kernel = clCreateKernel(program, "kmeans",&err);
+
+	kernel = clCreateKernel(program, "kmean",&err);
 	CHECK_ERROR(err);	
 }
 
 void kmeans(int iteration_n, int class_n, int data_n, Point* centroids, Point* data, int* partitioned)
 {
-	/*
-	 * TODO
-	 * Implement here.
-	 * See "kmeans_seq.c" if you don't know what to do.
-	 */
-	kmeans_init();
-	cl_mem bufA,bufB,bufC,bufD;
-	// bufA = data
-	bufA = clCreateBuffer(context,CL_MEM_READ_ONLY,sizeof(Point)*data_n,NULL,&err);
+	float dbl_max = DBL_MAX;
+
+	cl_mem buf_data, buf_cen, buf_part;
+	//data
+	buf_data = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Point)*data_n, NULL, &err);
 	CHECK_ERROR(err);
-	// bufB = centroid
-	bufB = clCreateBuffer(context,CL_MEM_READ_ONLY,sizeof(Point)*class_n,NULL,&err);
-        CHECK_ERROR(err);
-	// bufC = centroid
-	bufC = clCreateBuffer(context,CL_MEM_WRITE_ONLY,sizeof(Point)*class_n,NULL,&err);
+	//input_centroid
+	buf_cen = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(Point)*class_n, NULL, &err);
 	CHECK_ERROR(err);
-	// bufD = partition
-	bufD = clCreateBuffer(context,CL_MEM_WRITE_ONLY,sizeof(int)*dara_n,NULL,&err);
+	//partition
+	buf_part = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(int)*data_n, NULL, &err);
 	CHECK_ERROR(err);
 	
-	double start_time = get_time();
-
-	err = clEnqueueWriteBuffer(queue,bufA,CL_FALSE,0,sizeof(Point)*data_n,data,0,NULL,NULL);
+	//Write data,partition
+	err = clEnqueueWriteBuffer(queue[0], buf_data, CL_FALSE, 0, sizeof(Point)*data_n, data, 0, NULL, NULL);
 	CHECK_ERROR(err);
 
-	err = clEnqueueWriteBuffer(queue,bufB,CL_FALSE,0,sizeof(Point)*class_n,centroids,0,NULL,NULL);
+	err = clEnqueueWriteBuffer(queue[0], buf_part,CL_FALSE,0,sizeof(int)*data_n,partitioned,0,NULL, NULL);
 	CHECK_ERROR(err);
+
+	err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &buf_data);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &buf_cen);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &buf_part);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel, 3, sizeof(int), &class_n);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel, 4, sizeof(int), &data_n);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel, 5, sizeof(float), &dbl_max);
+	CHECK_ERROR(err);	
 	
-	err = clSetKernelArg(kernel,0,sizeof(cl_mem),&bufA);
-	CHECK_ERROR(err);
+	size_t global_size = data_n;
+        size_t local_size = 256;
+	global_size = (global_size + local_size - 1) / local_size * local_size;
 
-	err = clSetKernelArg(kernel,1,sizeof(cl_mem),&bufB);
-	CHECK_ERROR(err);
-
-	err = clSetKernelArg(kernel,2,sizeof(cl_mem),&bufC);
-	CHECK_ERROR(err);
-
-	err = clSetKernelArg(kernel,3,sizeof(cl_mem),&bufD);
-	CHECK_ERROR(err);
+	int i,class_i,data_i;
 	
-	err = clSetKernelArg(kernel,4,sizeof(cl_int),&class_n);
-	CHECK_ERROR(err);
+	for(i=0;i<iteration_n;i++) {
+		//Write centroid
+		err = clEnqueueWriteBuffer(queue[1],buf_cen,CL_TRUE,0,sizeof(Point)*class_n,centroids,0,NULL,&kernel_event[1]);
+                CHECK_ERROR(err);
 
-	err = clSetKernelArg(kernel,5,sizeof(cl_int),&data_n);
-	CHECK_ERROR(err);
+		//Kernel open
+		err = clEnqueueNDRangeKernel(queue[0],kernel,1,NULL,&global_size,&local_size,0,NULL,&kernel_event[0]);
+		CHECK_ERROR(err);
+		
+		err = clFinish(queue[0]);
+		CHECK_ERROR(err);
 
-	err = clSetKernelArg(kernel,6,sizeof(cl_int),&iteration_n);	
-	CHECK_ERROR(err);
+		//Read partition
+		err = clEnqueueReadBuffer(queue[1],buf_part,CL_TRUE,0,sizeof(int)*data_n,partitioned,0,NULL,&kernel_event[0]);
+                CHECK_ERROR(err);		
+		
+		int* count = (int*)malloc(sizeof(int) * class_n);
 
-	size_t global_size = data_n*interation_n*class_n;
-	size_t local_size = 256;
+		for (class_i = 0; class_i < class_n; class_i++) {
+			centroids[class_i].x = 0.0;
+			centroids[class_i].y = 0.0;
+			count[class_i] = 0;
+		}
 
-	err = clEnqueueNDRangeKernel(queue,kernel,1,NULL,global_size,local_size,0,NULL,NULL);
-	CHECK_ERROR(err);
-	
-	err = clEnqueueReadBuffer(queue,bufC,CL_TRUE,0,sizeof(Point)*class_n,centroids,0,NULL,NULL);
-	CHECK_ERROR(err);
+		for (data_i = 0; data_i < data_n; data_i++) {         
+			centroids[partitioned[data_i]].x += data[data_i].x;
+			centroids[partitioned[data_i]].y += data[data_i].y;
+			count[partitioned[data_i]]++;
+		}
 
-	err = clEnqueueReadBuffer(queue,bufD,CL_TRUE,0,sizeof(int)*data_n,partitioned,0,NULL,NULL);
-	CHECK_ERROR(err);
-
-	double end_time = get_time();
-	printf("elapsed time : %f\n",end_time-start_time);
-
-	clReleaseMemObject(bufA);
-	clReleaseMemObject(bufB);
-	clReleaseMemObject(bufC);
-        clReleaseMemObject(bufD);
-	clReleaseKernel(kernel);
-        clReleaseProgram(program);
-	clReleaseCommandQueue(queue);
+		for (class_i = 0; class_i < class_n; class_i++) {
+			centroids[class_i].x /= count[class_i];
+			centroids[class_i].y /= count[class_i];
+		}
+	}
+	clReleaseMemObject(buf_data);
+	clReleaseMemObject(buf_cen);
+	clReleaseMemObject(buf_part);
 	clReleaseContext(context);
+	clReleaseCommandQueue(queue[0]);
+	clReleaseCommandQueue(queue[1]);
+	clReleaseProgram(program);
+	clReleaseKernel(kernel);
 }
